@@ -23,20 +23,23 @@ async function loadData() {
         const kjvText = await kjvResponse.text();
         const planText = await planResponse.text();
 
-        // --- REVERTED: Parsing logic for kjv.csv (comma-separated) ---
-        // This section now correctly handles comma-separated data for the KJV file.
+        // --- CORRECTED: Parsing logic for kjv.csv (space-separated) ---
+        // Reverting back to the regex parser, as the file is space-separated.
         const kjvLines = kjvText.trim().split('\n');
         kjvLines.forEach(line => {
-            const parts = line.split(',');
-            if (parts.length >= 2) {
-                const reference = parts[0].trim();
-                // This correctly handles cases where the verse text itself contains commas
-                const text = parts.slice(1).join(',').trim();
+            const trimmedLine = line.trim();
+            // This regex correctly separates the reference (e.g., "1 Samuel 1:1")
+            // from the verse text that follows it.
+            const match = trimmedLine.match(/^(.+?\s\d+:\d+)\s+(.*)$/);
+
+            if (match) {
+                const reference = match[1];
+                const text = match[2];
                 allVersesArray.push({ reference, text });
             }
         });
 
-        // --- UNCHANGED: Parsing logic for ChronoBiblePlan.csv (space-separated) ---
+        // --- CORRECT: Parsing logic for ChronoBiblePlan.csv (space-separated) ---
         // This logic correctly handles the space-separated plan file and ignores stray commas.
         const planLines = planText.trim().split('\n');
         planLines.forEach(line => {
@@ -62,7 +65,7 @@ async function loadData() {
 function displayRandomVerse() {
     if (allVersesArray.length === 0) {
         const container = document.getElementById('random-verse-container');
-        if (container) container.innerHTML = `<p>Could not load any verses.</p>`;
+        if (container) container.innerHTML = `<p>Could not load any verses. Please check the 'kjv.csv' file format.</p>`;
         return;
     }
 
@@ -123,9 +126,9 @@ async function main() {
     document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
 
     // Set up the random verse generator if verses were loaded
+    displayRandomVerse(); // Call this to show the initial verse or the error message
     if (allVersesArray.length > 0) {
-        displayRandomVerse();
-        setInterval(displayRandomVerse, 3600 * 1000); // Update every hour
+        setInterval(displayRandomVerse, 3600 * 1000); // Update every hour only if successful
     }
     
     // Display the daily reading plan
