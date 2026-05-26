@@ -32,7 +32,7 @@ async function loadData() {
             if (parts.length < 2) return;
 
             const reference = parts[0].trim();
-            const text = parts.slice(1).join(',').trim();
+            const text = parts.slice(1).join(',').trim().replace(/^"|"$/g, ''); // Remove surrounding quotes
             
             verseLookup.set(reference, text);
             allVersesArray.push({ reference, text });
@@ -64,10 +64,10 @@ async function loadData() {
 }
 
 /**
- * NEW, SIMPLER PARSER: Expands a single reference part.
+ * WORKER FUNCTION: Expands a *simple* reference part.
  * Handles: "Genesis 1-2", "Psalm 131", "John 1:1-5", "John 3:16"
  */
-function expandReference(ref) {
+function expandSimpleReference(ref) {
     const expandedRefs = [];
 
     // Case 1: Chapter Range (e.g., "Genesis 1-2")
@@ -96,20 +96,43 @@ function expandReference(ref) {
         return expandedRefs;
     }
     
-    // Case 3: Full Chapter (e.g., "Psalm 131") or Single Verse ("John 3:16")
-    // If it's a full chapter, the map will find it.
+    // Case 3: Full Chapter (e.g., "Psalm 131")
     const verses = chapterVerseMap.get(ref);
     if (verses) {
         verses.forEach(v => expandedRefs.push(`${ref}:${v}`));
         return expandedRefs;
     }
     
-    // If it's a single verse, it won't be in the chapter map, so just return it.
+    // Case 4: Single Verse (e.g., "John 3:16")
     if (verseLookup.has(ref)) {
         return [ref];
     }
     
     return []; // Return empty if no match
+}
+
+/**
+ * MANAGER FUNCTION: Breaks down a complex passage string.
+ * Handles: "Psalm 131, 138-139, 143-145"
+ */
+function parseComplexPassage(passage) {
+    const allPassageRefs = [];
+    // Extract the book name, which we assume is at the start.
+    const bookMatch = passage.match(/^([1-3]?\s?[a-zA-Z\s]+?)\s/);
+    if (!bookMatch) return []; // Cannot find a book name
+
+    const book = bookMatch[1].trim();
+    // Get everything after the book name and split by comma.
+    const parts = passage.replace(book, '').split(',').map(p => p.trim());
+
+    for (const part of parts) {
+        if (!part) continue;
+        // Re-attach the book name to each part to create a simple reference.
+        // e.g., if part is "138-139", this creates "Psalm 138-139"
+        const simpleRef = `${book} ${part}`;
+        allPassageRefs.push(...expandSimpleReference(simpleRef));
+    }
+    return allPassageRefs;
 }
 
 
@@ -132,11 +155,12 @@ function displayDailyReading() {
         return;
     }
 
-    // Handle multiple passages, e.g., "Psalm 131, 138-139; John 1:1-5"
+    // Handle multiple passages separated by semicolons
     const passages = readingPlanString.split(';').map(p => p.trim());
     let allVersesForDay = [];
     for (const passage of passages) {
-        allVersesForDay.push(...expandReference(passage));
+        // Use our new, smart manager function
+        allVersesForDay.push(...parseComplexPassage(passage));
     }
 
     let htmlOutput = `<p><strong>Reading Plan:</strong> ${readingPlanString}</p><hr>`;
