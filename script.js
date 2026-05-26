@@ -23,18 +23,16 @@ async function loadData() {
         const kjvText = await kjvResponse.text();
         const planText = await planResponse.text();
 
-        // --- CORRECTED: Parsing logic for kjv.csv (space-separated) ---
-        // Reverting back to the regex parser, as the file is space-separated.
+        // --- ORIGINAL METHOD: Parsing logic for kjv.csv (comma-separated) ---
+        // This is the simplest, most standard way to parse a CSV file.
+        // It assumes the reference and text are separated by a comma.
         const kjvLines = kjvText.trim().split('\n');
         kjvLines.forEach(line => {
-            const trimmedLine = line.trim();
-            // This regex correctly separates the reference (e.g., "1 Samuel 1:1")
-            // from the verse text that follows it.
-            const match = trimmedLine.match(/^(.+?\s\d+:\d+)\s+(.*)$/);
-
-            if (match) {
-                const reference = match[1];
-                const text = match[2];
+            const parts = line.split(',');
+            if (parts.length >= 2) {
+                const reference = parts[0].trim();
+                // This correctly handles cases where the verse text itself contains commas
+                const text = parts.slice(1).join(',').trim();
                 allVersesArray.push({ reference, text });
             }
         });
@@ -65,7 +63,7 @@ async function loadData() {
 function displayRandomVerse() {
     if (allVersesArray.length === 0) {
         const container = document.getElementById('random-verse-container');
-        if (container) container.innerHTML = `<p>Could not load any verses. Please check the 'kjv.csv' file format.</p>`;
+        if (container) container.innerHTML = `<p>Could not load any verses. Please check that the 'kjv.csv' file is comma-separated.</p>`;
         return;
     }
 
@@ -125,8 +123,8 @@ async function main() {
     // Hide loading indicators once data processing is done
     document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
 
-    // Set up the random verse generator if verses were loaded
-    displayRandomVerse(); // Call this to show the initial verse or the error message
+    // Set up the random verse generator. It will show an error if it failed.
+    displayRandomVerse();
     if (allVersesArray.length > 0) {
         setInterval(displayRandomVerse, 3600 * 1000); // Update every hour only if successful
     }
