@@ -3,10 +3,10 @@ const KJV_URL = 'kjv.csv';
 const PLAN_URL = 'ChronoBiblePlan.csv';
 
 // --- GLOBAL DATA STORES ---
-let allVersesArray = [];    // For the random verse generator
-let verseLookup = new Map();      // For fast verse lookup by reference (e.g., "Genesis 1:1")
-let chapterVerseMap = new Map();  // Maps a chapter (e.g., "Psalm 131") to its verse numbers [1, 2, 3...]
-let planLookup = new Map();       // For the daily reading plan
+let allVersesArray = [];
+let verseLookup = new Map();
+let chapterVerseMap = new Map();
+let planLookup = new Map();
 
 /**
  * Fetches and parses the CSV files into our data stores.
@@ -26,7 +26,6 @@ async function loadData() {
         const planText = await planResponse.text();
 
         // --- Parsing logic for kjv.csv (comma-separated) ---
-        // This now populates all three KJV data structures.
         const kjvLines = kjvText.trim().split('\n');
         kjvLines.forEach(line => {
             const parts = line.split(',');
@@ -35,21 +34,16 @@ async function loadData() {
             const reference = parts[0].trim();
             const text = parts.slice(1).join(',').trim();
             
-            // 1. For Random Verse Generator
-            allVersesArray.push({ reference, text });
-            
-            // 2. For Fast Verse Lookup
             verseLookup.set(reference, text);
+            allVersesArray.push({ reference, text });
 
-            // 3. For Chapter-to-Verse Mapping (e.g., "Psalm 131" -> [1, 2, 3])
             const chapterMatch = reference.match(/^(.*\s\d+):(\d+)$/);
             if (chapterMatch) {
-                const chapterKey = chapterMatch[1]; // "Psalm 131"
-                const verseNum = parseInt(chapterMatch[2], 10);
+                const chapterKey = chapterMatch[1];
                 if (!chapterVerseMap.has(chapterKey)) {
                     chapterVerseMap.set(chapterKey, []);
                 }
-                chapterVerseMap.get(chapterKey).push(verseNum);
+                chapterVerseMap.get(chapterKey).push(parseInt(chapterMatch[2], 10));
             }
         });
 
@@ -65,47 +59,62 @@ async function loadData() {
 
     } catch (error) {
         console.error("Failed to load bible data:", error);
-        document.body.innerHTML = `<p style="color:red; text-align:center;">Error: Could not load data files. Make sure '${KJV_URL}' and '${PLAN_URL}' exist in the repository.</p>`;
+        document.body.innerHTML = `<p style="color:red; text-align:center;">Error: Could not load data files.</p>`;
     }
 }
 
 /**
- * Expands complex reference strings into a list of individual verse references.
- * e.g., "Psalm 131, 138-139, 143-145" -> ["Psalm 131:1", "Psalm 131:2", ...]
+ * NEW, SIMPLER PARSER: Expands a single reference part.
+ * Handles: "Genesis 1-2", "Psalm 131", "John 1:1-5", "John 3:16"
  */
-function expandComplexReference(refString) {
-    const allVerseRefs = [];
-    const bookMatch = refString.match(/^([1-3]?\s?[a-zA-Z]+)\s*(.*)/);
-    if (!bookMatch) return []; // Not a valid format
+function expandReference(ref) {
+    const expandedRefs = [];
 
-    const book = bookMatch[1].trim(); // "Psalm"
-    const chapterParts = bookMatch[2].split(',').map(p => p.trim()); // ["131", "138-139", "143-145"]
-
-    for (const part of chapterParts) {
-        if (part.includes('-')) {
-            // It's a range like "138-139"
-            const [start, end] = part.split('-').map(n => parseInt(n, 10));
-            for (let i = start; i <= end; i++) {
-                const chapterKey = `${book} ${i}`;
-                const verses = chapterVerseMap.get(chapterKey) || [];
-                for (const verse of verses) {
-                    allVerseRefs.push(`${chapterKey}:${verse}`);
-                }
-            }
-        } else {
-            // It's a single chapter like "131"
-            const chapterKey = `${book} ${part}`;
+    // Case 1: Chapter Range (e.g., "Genesis 1-2")
+    const chapRangeMatch = ref.match(/^(.*\D)\s*(\d+)-(\d+)$/);
+    if (chapRangeMatch) {
+        const book = chapRangeMatch[1].trim();
+        const startChap = parseInt(chapRangeMatch[2], 10);
+        const endChap = parseInt(chapRangeMatch[3], 10);
+        for (let i = startChap; i <= endChap; i++) {
+            const chapterKey = `${book} ${i}`;
             const verses = chapterVerseMap.get(chapterKey) || [];
-            for (const verse of verses) {
-                allVerseRefs.push(`${chapterKey}:${verse}`);
-            }
+            verses.forEach(v => expandedRefs.push(`${chapterKey}:${v}`));
         }
+        return expandedRefs;
     }
-    return allVerseRefs;
+
+    // Case 2: Verse Range (e.g., "John 1:1-5")
+    const verseRangeMatch = ref.match(/^(.*\s\d+):(\d+)-(\d+)$/);
+    if (verseRangeMatch) {
+        const base = verseRangeMatch[1];
+        const startVerse = parseInt(verseRangeMatch[2], 10);
+        const endVerse = parseInt(verseRangeMatch[3], 10);
+        for (let i = startVerse; i <= endVerse; i++) {
+            expandedRefs.push(`${base}:${i}`);
+        }
+        return expandedRefs;
+    }
+    
+    // Case 3: Full Chapter (e.g., "Psalm 131") or Single Verse ("John 3:16")
+    // If it's a full chapter, the map will find it.
+    const verses = chapterVerseMap.get(ref);
+    if (verses) {
+        verses.forEach(v => expandedRefs.push(`${ref}:${v}`));
+        return expandedRefs;
+    }
+    
+    // If it's a single verse, it won't be in the chapter map, so just return it.
+    if (verseLookup.has(ref)) {
+        return [ref];
+    }
+    
+    return []; // Return empty if no match
 }
 
+
 /**
- * Displays the full text of the reading for the current day. (Right Column)
+ * DEBUGGING VERSION: Displays the LIST of generated verse references.
  */
 function displayDailyReading() {
     const dayOfYear = getDayOfYear();
@@ -123,22 +132,21 @@ function displayDailyReading() {
         return;
     }
 
-    // Handle multiple passages in one day, e.g., "Genesis 1-2; John 1"
+    // Handle multiple passages, e.g., "Psalm 131, 138-139; John 1:1-5"
     const passages = readingPlanString.split(';').map(p => p.trim());
     let allVersesForDay = [];
     for (const passage of passages) {
-        allVersesForDay.push(...expandComplexReference(passage));
+        allVersesForDay.push(...expandReference(passage));
     }
 
-    if (allVersesForDay.length === 0) {
-        textEl.innerHTML = `<p><strong>Reading for Today:</strong> ${readingPlanString}</p><p><em>(Could not expand verses. Check format.)</em></p>`;
-        return;
-    }
+    let htmlOutput = `<p><strong>Reading Plan:</strong> ${readingPlanString}</p><hr>`;
     
-    let htmlOutput = `<p><strong>Reading for Today:</strong> ${readingPlanString}</p><hr>`;
-    for (const verseRef of allVersesForDay) {
-        const text = verseLookup.get(verseRef) || "--- VERSE NOT FOUND ---";
-        htmlOutput += `<p><strong>${verseRef}:</strong> ${text}</p>`;
+    if (allVersesForDay.length > 0) {
+        htmlOutput += `<p><strong>Generated Verse References (${allVersesForDay.length} total):</strong></p>`;
+        // Display the list of references for debugging
+        htmlOutput += `<pre style="white-space: pre-wrap; word-break: break-all;">${allVersesForDay.join('\n')}</pre>`;
+    } else {
+        htmlOutput += `<p><em>Could not expand references from the plan. Please check the format in ChronoBiblePlan.csv.</em></p>`;
     }
 
     textEl.innerHTML = htmlOutput;
@@ -149,7 +157,7 @@ function displayDailyReading() {
 function displayRandomVerse() {
     if (allVersesArray.length === 0) {
         const container = document.getElementById('random-verse-container');
-        if (container) container.innerHTML = `<p>Could not load any verses. Please check that the 'kjv.csv' file is comma-separated.</p>`;
+        if (container) container.innerHTML = `<p>Could not load any verses. Please check that 'kjv.csv' is comma-separated.</p>`;
         return;
     }
     const randomVerse = allVersesArray[Math.floor(Math.random() * allVersesArray.length)];
