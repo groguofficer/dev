@@ -1,31 +1,56 @@
 // --- CONFIGURATION ---
 const KJV_URL = 'kjv.csv';
+const KJV_CHAPTER_URL = 'kjv_by_chapter.csv';
 const PLAN_URL = 'ChronoBiblePlan.csv';
 
 // --- GLOBAL DATA STORES ---
 let allVersesArray = [];
 let verseLookup = new Map();
-let chapterVerseMap = new Map();
+let chapterLookup = new Map();
 let planLookup = new Map();
+
+/**
+ * Minimal CSV row parser that handles quoted fields containing commas.
+ */
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+            inQuotes = !inQuotes;
+        } else if (ch === ',' && !inQuotes) {
+            result.push(current);
+            current = '';
+        } else {
+            current += ch;
+        }
+    }
+    result.push(current);
+    return result;
+}
 
 /**
  * Fetches and parses the CSV files into our data stores.
  */
 async function loadData() {
     try {
-        const [kjvResponse, planResponse] = await Promise.all([
+        const [kjvResponse, kjvChapterResponse, planResponse] = await Promise.all([
             fetch(KJV_URL),
+            fetch(KJV_CHAPTER_URL),
             fetch(PLAN_URL)
         ]);
 
-        if (!kjvResponse.ok || !planResponse.ok) {
+        if (!kjvResponse.ok || !kjvChapterResponse.ok || !planResponse.ok) {
             throw new Error('Network response was not ok.');
         }
 
         const kjvText = await kjvResponse.text();
+        const kjvChapterText = await kjvChapterResponse.text();
         const planText = await planResponse.text();
 
-        // --- Parsing logic for kjv.csv (comma-separated) ---
+        // --- Parsing logic for kjv.csv (for random verse, unchanged) ---
         const kjvLines = kjvText.trim().split('\n');
         kjvLines.forEach(line => {
             const parts = line.split(',');
@@ -36,18 +61,26 @@ async function loadData() {
             
             verseLookup.set(reference, text);
             allVersesArray.push({ reference, text });
-
-            const chapterMatch = reference.match(/^(.*\s\d+):(\d+)$/);
-            if (chapterMatch) {
-                const chapterKey = chapterMatch[1];
-                if (!chapterVerseMap.has(chapterKey)) {
-                    chapterVerseMap.set(chapterKey, []);
-                }
-                chapterVerseMap.get(chapterKey).push(parseInt(chapterMatch[2], 10));
-            }
         });
 
-        // --- Parsing logic for ChronoBiblePlan.csv (space-separated) ---
+        // --- Parsing logic for kjv_by_chapter.csv (for daily reading) ---
+        // Format: Chapter,"All verses joined as one string"
+        // First row is a header ("Chapter,Verses") — skip it.
+        const kjvChapterLines = kjvChapterText.trim().split('\n');
+        kjvChapterLines.forEach((line, index) => {
+            if (index === 0) return; // skip header row
+            const trimmed = line.trim();
+            if (!trimmed) return;
+
+            const fields = parseCSVLine(trimmed);
+            if (fields.length < 2) return;
+
+            const chapter = fields[0].trim();
+            const text = fields[1].trim();
+            if (chapter) chapterLookup.set(chapter, text);
+        });
+
+        // --- Parsing logic for ChronoBiblePlan.csv (unchanged) ---
         const planLines = planText.trim().split('\n');
         planLines.forEach(line => {
             const trimmedLine = line.trim();
@@ -65,68 +98,50 @@ async function loadData() {
 
 /**
  * THE DEFINITIVE PARSER: Simple, robust, and step-by-step.
+ * Returns chapter keys (e.g. "Genesis 1") for use with chapterLookup.
  */
 function expandPassage(passageStr) {
     const results = [];
     
-    // Step 1: Find the first digit in the string.
     const firstDigitIndex = passageStr.search(/\d/);
-    if (firstDigitIndex === -1) {
-        return []; // If there are no numbers, we can't parse it.
-    }
+    if (firstDigitIndex === -1) return [];
 
-    // Step 2: The book is everything BEFORE the first digit.
     const book = passageStr.substring(0, firstDigitIndex).trim();
-    
-    // Step 3: The number string is everything FROM the first digit onward.
     const numberPart = passageStr.substring(firstDigitIndex).trim();
-    
-    // Step 4: Split the number string by commas to handle lists.
     const parts = numberPart.split(',');
 
     for (const part of parts) {
         const trimmedPart = part.trim();
         if (!trimmedPart) continue;
 
-        // Step 5: Process each part using the book as context.
-        
-        // Type A: Chapter Range (e.g., "1-5" or "138-139")
+        // Type A: Chapter Range (e.g., "1-5")
         if (trimmedPart.includes('-') && !trimmedPart.includes(':')) {
             const [start, end] = trimmedPart.split('-').map(n => parseInt(n, 10));
             for (let i = start; i <= end; i++) {
-                const chapterKey = `${book} ${i}`;
-                const verses = chapterVerseMap.get(chapterKey) || [];
-                verses.forEach(v => results.push(`${chapterKey}:${v}`));
+                results.push(`${book} ${i}`);
             }
         }
-        // Type B: Verse Range (e.g., "1:1-5")
+        // Type B: Verse Range (e.g., "1:1-5") — return whole chapter
         else if (trimmedPart.includes('-') && trimmedPart.includes(':')) {
-            const [chapter, verseRange] = trimmedPart.split(':');
-            const [start, end] = verseRange.split('-').map(n => parseInt(n, 10));
-            const chapterKey = `${book} ${chapter}`;
-            for (let i = start; i <= end; i++) {
-                results.push(`${chapterKey}:${i}`);
-            }
+            const chapter = trimmedPart.split(':')[0];
+            results.push(`${book} ${chapter}`);
         }
-        // Type C: Single Verse (e.g., "3:16")
+        // Type C: Single Verse (e.g., "3:16") — return whole chapter
         else if (trimmedPart.includes(':')) {
-            const chapterKey = `${book} ${trimmedPart}`;
-            results.push(chapterKey);
+            const chapter = trimmedPart.split(':')[0];
+            results.push(`${book} ${chapter}`);
         }
-        // Type D: Single Full Chapter (e.g., "131")
+        // Type D: Single Full Chapter (e.g., "1")
         else {
-            const chapterKey = `${book} ${trimmedPart}`;
-            const verses = chapterVerseMap.get(chapterKey) || [];
-            verses.forEach(v => results.push(`${chapterKey}:${v}`));
+            results.push(`${book} ${trimmedPart}`);
         }
     }
-    
-    return results;
+
+    return [...new Set(results)];
 }
 
-
 /**
- * FINAL VERSION: Displays the FULL TEXT of the daily reading.
+ * Displays the full text of the daily reading using kjv_by_chapter.csv.
  */
 function displayDailyReading() {
     const dayOfYear = getDayOfYear();
@@ -145,20 +160,24 @@ function displayDailyReading() {
     }
 
     const passages = readingPlanString.split(';').map(p => p.trim());
-    let allVersesForDay = [];
+    const allChaptersForDay = [];
     for (const passage of passages) {
-        allVersesForDay.push(...expandPassage(passage));
+        allChaptersForDay.push(...expandPassage(passage));
     }
 
     let htmlOutput = `<p><strong>Reading Plan:</strong> ${readingPlanString}</p><hr>`;
     
-    if (allVersesForDay.length > 0) {
-        for (const verseRef of allVersesForDay) {
-            const text = verseLookup.get(verseRef) || `--- VERSE NOT FOUND for ${verseRef} ---`;
-            htmlOutput += `<p><strong>${verseRef}:</strong> ${text}</p>`;
+    if (allChaptersForDay.length > 0) {
+        for (const chapterKey of allChaptersForDay) {
+            const text = chapterLookup.get(chapterKey);
+            if (text) {
+                htmlOutput += `<h3>${chapterKey}</h3><p>${text}</p>`;
+            } else {
+                htmlOutput += `<p style="color:red;">--- CHAPTER NOT FOUND: ${chapterKey} ---</p>`;
+            }
         }
     } else {
-        htmlOutput += `<p style="color: red;"><strong>Parser Failure:</strong> The 'expandPassage' function could not generate any verse references from the plan string.</p>`;
+        htmlOutput += `<p style="color: red;"><strong>Parser Failure:</strong> The 'expandPassage' function could not generate any chapter references from the plan string.</p>`;
     }
 
     textEl.innerHTML = htmlOutput;
