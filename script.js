@@ -36,13 +36,22 @@ async function loadData() {
             }
         });
 
-        // Parse Chronological Plan data for the daily reading
+        // --- PARSING LOGIC CORRECTION FOR ChronoBiblePlan.csv ---
+        // This section is updated to handle space-separated values.
         const planLines = planText.trim().split('\n');
         planLines.forEach(line => {
-            const parts = line.split(',');
-            if (parts.length >= 2) {
-                const day = parts[0].trim();
-                const references = parts[1].trim();
+            const trimmedLine = line.trim();
+            
+            // Use a regular expression to find the first block of numbers (the day)
+            // and capture the rest of the line as the reference.
+            // This correctly handles "1 Genesis 1-3" and skips the header row.
+            const match = trimmedLine.match(/^(\d+)\s+(.*)$/);
+
+            if (match) {
+                // match[1] is the captured day number (e.g., "1")
+                // match[2] is the captured reference string (e.g., "Genesis 1-3")
+                const day = match[1];
+                const references = match[2].trim();
                 planLookup.set(day, references);
             }
         });
@@ -81,7 +90,6 @@ function getDayOfYear() {
 
 /**
  * Displays the reading plan for the current day. (Right Column)
- * This version ONLY shows the day and the references, not the full text.
  */
 function displayDailyReading() {
     const dayOfYear = getDayOfYear();
@@ -90,23 +98,17 @@ function displayDailyReading() {
     const titleEl = document.getElementById('daily-reading-title');
     const textEl = document.getElementById('daily-reading-text');
 
-    // Update the main title for the column
     titleEl.innerText = `Today's Reading Plan`;
     
     let htmlOutput = '';
-
-    // Add the day of the year to the display
     htmlOutput += `<p><strong>Day of the Year:</strong> ${dayOfYear}</p>`;
 
     if (readingRefs) {
-        // Display the reference string directly from the plan file
         htmlOutput += `<p><strong>Reading for Today:</strong> ${readingRefs}</p>`;
     } else {
-        // Handle case where there is no reading for today
         htmlOutput += `<p><strong>Reading for Today:</strong> No reading scheduled for today.</p>`;
     }
 
-    // Set the content of the right column
     textEl.innerHTML = htmlOutput;
 }
 
@@ -116,7 +118,6 @@ function displayDailyReading() {
 async function main() {
     await loadData();
 
-    // Check if data loaded successfully before setting up the page
     if (allVersesArray.length > 0 && planLookup.size > 0) {
         // Set up the random verse generator (left column)
         displayRandomVerse();
@@ -125,11 +126,14 @@ async function main() {
         // Set up the daily reading plan (right column)
         displayDailyReading();
     } else {
-        // If data loading failed, the error message is already shown.
-        // We can hide the loading indicators.
+        // If data loading failed or the plan is empty, ensure the UI reflects this.
         document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
+        // If the plan is empty but the bible loaded, still show the daily reading "not found" message
+        if (planLookup.size === 0) {
+            displayDailyReading();
+        }
     }
 }
 
-// Run the main function once the DOM is ready.
+// Run the main function.
 main();
