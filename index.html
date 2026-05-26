@@ -3,54 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Uppercase Converter</title>
+    <title>Sentence Uppercase Converter</title>
     <style>
+        /* Basic styling for a clean, modern look */
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: #f0f2f5;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
+            padding-top: 5rem;
             height: 100vh;
             margin: 0;
         }
+
         .container {
             background-color: #ffffff;
             padding: 2rem;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            text-align: center;
+            width: 500px;
         }
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            color: #333;
+
+        /* Use Flexbox to place the input and button on the same line */
+        .input-group {
+            display: flex;
+            gap: 0.5rem; /* Adds a small space between the input and button */
+            margin-bottom: 1.5rem;
         }
+
         input[type="text"] {
-            width: 300px;
+            flex-grow: 1; /* Allows the input field to take up the available space */
             padding: 0.75rem;
             font-size: 1rem;
             border: 1px solid #ccc;
             border-radius: 4px;
-            transition: border-color 0.2s;
         }
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #007bff;
+
+        button {
+            background-color: #2c974b; /* A nice green color for the button */
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #22743a;
+        }
+
+        #result-container {
+            border-top: 1px solid #e9ecef;
+            padding-top: 1.5rem;
+            font-size: 1.2rem;
+            color: #333;
+            word-wrap: break-word; /* Ensures long text wraps nicely */
         }
     </style>
 </head>
 <body>
+
     <div class="container">
-        <label for="textInput">Enter Text Here</label>
-        <input type="text" id="textInput" placeholder="Type something...">
+        <!-- We use a form for better accessibility and user experience -->
+        <form id="sentenceForm">
+            <div class="input-group">
+                <input type="text" id="sentenceInput" placeholder="Type your sentence here..." required>
+                <button type="submit">Enter</button>
+            </div>
+        </form>
+
+        <!-- The uppercase result will be printed inside this div -->
+        <div id="result-container"></div>
     </div>
+
     <script>
-        const inputField = document.getElementById('textInput');
-        inputField.addEventListener('input', function() {
-            this.value = this.value.toUpperCase();
+        // Get references to the HTML elements we need to interact with
+        const sentenceForm = document.getElementById('sentenceForm');
+        const sentenceInput = document.getElementById('sentenceInput');
+        const resultContainer = document.getElementById('result-container');
+
+        // Add an event listener to the form to watch for a 'submit' event
+        sentenceForm.addEventListener('submit', function(event) {
+            // This is crucial: it stops the page from reloading when the form is submitted
+            event.preventDefault();
+
+            // 1. Get the current text from the input field
+            const originalSentence = sentenceInput.value;
+
+            // 2. Convert the text to uppercase
+            const upperCaseSentence = originalSentence.toUpperCase();
+
+            // 3. Display the uppercase text in the result container
+            resultContainer.textContent = upperCaseSentence;
         });
     </script>
+
 </body>
 </html>
