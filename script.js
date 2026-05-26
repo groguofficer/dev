@@ -2,12 +2,14 @@
 const KJV_URL = 'kjv.csv';
 const KJV_CHAPTER_URL = 'kjv_by_chapter.csv';
 const PLAN_URL = 'ChronoBiblePlan.csv';
+const SPURGEON_URL = 'spurgeon_morning_and_evening.csv';
 
 // --- GLOBAL DATA STORES ---
 let allVersesArray = [];
 let verseLookup = new Map();
 let chapterLookup = new Map();
 let planLookup = new Map();
+let spurgeonDevotionals = []; // Stores objects: { date: "January 1", period: "Morning", text: "..." }
 
 /**
  * Minimal CSV row parser that handles quoted fields containing commas.
@@ -36,19 +38,21 @@ function parseCSVLine(line) {
  */
 async function loadData() {
     try {
-        const [kjvResponse, kjvChapterResponse, planResponse] = await Promise.all([
+        const [kjvResponse, kjvChapterResponse, planResponse, spurgeonResponse] = await Promise.all([
             fetch(KJV_URL),
             fetch(KJV_CHAPTER_URL),
-            fetch(PLAN_URL)
+            fetch(PLAN_URL),
+            fetch(SPURGEON_URL)
         ]);
 
-        if (!kjvResponse.ok || !kjvChapterResponse.ok || !planResponse.ok) {
+        if (!kjvResponse.ok || !kjvChapterResponse.ok || !planResponse.ok || !spurgeonResponse.ok) {
             throw new Error('Network response was not ok.');
         }
 
         const kjvText = await kjvResponse.text();
         const kjvChapterText = await kjvChapterResponse.text();
         const planText = await planResponse.text();
+        const spurgeonText = await spurgeonResponse.text();
 
         // --- Parsing logic for kjv.csv (for random verse, unchanged) ---
         const kjvLines = kjvText.trim().split('\n');
@@ -64,8 +68,6 @@ async function loadData() {
         });
 
         // --- Parsing logic for kjv_by_chapter.csv (for daily reading) ---
-        // Format: Chapter,"All verses joined as one string"
-        // First row is a header ("Chapter,Verses") — skip it.
         const kjvChapterLines = kjvChapterText.trim().split('\n');
         kjvChapterLines.forEach((line, index) => {
             if (index === 0) return; // skip header row
@@ -80,13 +82,31 @@ async function loadData() {
             if (chapter) chapterLookup.set(chapter, text);
         });
 
-        // --- Parsing logic for ChronoBiblePlan.csv (unchanged) ---
+        // --- Parsing logic for ChronoBiblePlan.csv ---
         const planLines = planText.trim().split('\n');
         planLines.forEach(line => {
             const trimmedLine = line.trim();
             const match = trimmedLine.match(/^(\d+)\s*,?\s*(.*)$/);
             if (match) {
                 planLookup.set(match[1], match[2].trim());
+            }
+        });
+
+        // --- Parsing logic for spurgeon_morning_and_evening.csv ---
+        // Expected columns: Date, Period (Morning/Evening), Content
+        const spurgeonLines = spurgeonText.trim().split('\n');
+        spurgeonLines.forEach((line, index) => {
+            if (index === 0) return; // Skip header row
+            const trimmed = line.trim();
+            if (!trimmed) return;
+
+            const fields = parseCSVLine(trimmed);
+            if (fields.length >= 3) {
+                spurgeonDevotionals.push({
+                    date: fields[0].trim().replace(/^"|"$/g, ''),       // e.g., "January 1"
+                    period: fields[1].trim().replace(/^"|"$/g, ''),     // e.g., "Morning" or "Evening"
+                    text: fields.slice(2).join(',').trim().replace(/^"|"$/g, '') // The devotional entry
+                });
             }
         });
 
@@ -98,25 +118,10 @@ async function loadData() {
 
 /**
  * THE DEFINITIVE PARSER: Simple, robust, and step-by-step.
- * Returns chapter keys (e.g. "Genesis 1") for use with chapterLookup.
- *
- * Handles book names that start with a number (e.g. "1 Chronicles", "2 Kings").
- * The book name is everything up to and including the first word after a leading
- * digit-prefix (if any). The chapter/verse numbers come after the book name.
- *
- * Strategy: a leading digit followed by a space and letters is part of the book
- * name. The chapter number starts at the LAST run of digits in the string that
- * is preceded by a space (and not itself the book prefix).
- * Simpler approach: match the book name with a regex that allows an optional
- * leading digit, then capture the rest as the number part.
  */
 function expandPassage(passageStr) {
     const results = [];
 
-    // Match: optional leading digit + letters/spaces for book name,
-    // then a space + digits... for the chapter/verse part.
-    // Group 1: book name (e.g. "1 Chronicles", "Genesis", "Song of Solomon")
-    // Group 2: chapter/verse number string (e.g. "26-29", "3:16", "1-5")
     const bookMatch = passageStr.match(/^(\d\s+[A-Za-z][\w\s]*?|[A-Za-z][\w\s]*?)\s+(\d[\d\S]*)$/);
     if (!bookMatch) return [];
 
@@ -128,24 +133,20 @@ function expandPassage(passageStr) {
         const trimmedPart = part.trim();
         if (!trimmedPart) continue;
 
-        // Type A: Chapter Range (e.g., "1-5")
         if (trimmedPart.includes('-') && !trimmedPart.includes(':')) {
             const [start, end] = trimmedPart.split('-').map(n => parseInt(n, 10));
             for (let i = start; i <= end; i++) {
                 results.push(`${book} ${i}`);
             }
         }
-        // Type B: Verse Range (e.g., "1:1-5") — return whole chapter
         else if (trimmedPart.includes('-') && trimmedPart.includes(':')) {
             const chapter = trimmedPart.split(':')[0];
             results.push(`${book} ${chapter}`);
         }
-        // Type C: Single Verse (e.g., "3:16") — return whole chapter
         else if (trimmedPart.includes(':')) {
             const chapter = trimmedPart.split(':')[0];
             results.push(`${book} ${chapter}`);
         }
-        // Type D: Single Full Chapter (e.g., "1")
         else {
             results.push(`${book} ${trimmedPart}`);
         }
@@ -197,37 +198,38 @@ function displayDailyReading() {
     textEl.innerHTML = htmlOutput;
 }
 
-// --- Other functions (unchanged) ---
+/**
+ * Extracts and displays Spurgeon's Morning and Evening devotionals for today.
+ * Looks for matching DOM elements 'spurgeon-morning' and 'spurgeon-evening'.
+ */
+function displaySpurgeonDevotional() {
+    const now = new Date();
+    
+    // Format current date to match CSV targeting style (e.g., "January 1")
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const todayString = `${months[now.getMonth()]} ${now.getDate()}`;
+
+    const morningEl = document.getElementById('spurgeon-morning');
+    const eveningEl = document.getElementById('spurgeon-evening');
+
+    // Find the entries in our parsed data array
+    const morningDevotion = spurgeonDevotionals.find(d => d.date === todayString && d.period.toLowerCase() === 'morning');
+    const eveningDevotion = spurgeonDevotionals.find(d => d.date === todayString && d.period.toLowerCase() === 'evening');
+
+    if (morningEl) {
+        morningEl.innerHTML = morningDevotion 
+            ? `<h3>Morning Devotional — ${todayString}</h3><p>${morningDevotion.text}</p>`
+            : `<h3>Morning Devotional</h3><p>No entry found for today.</p>`;
+    }
+
+    if (eveningEl) {
+        eveningEl.innerHTML = eveningDevotion 
+            ? `<h3>Evening Devotional — ${todayString}</h3><p>${eveningDevotion.text}</p>`
+            : `<h3>Evening Devotional</h3><p>No entry found for today.</p>`;
+    }
+}
 
 function displayRandomVerse() {
     if (allVersesArray.length === 0) {
         const container = document.getElementById('random-verse-container');
-        if (container) container.innerHTML = `<p>Could not load any verses. Please check that 'kjv.csv' is comma-separated.</p>`;
-        return;
-    }
-    const randomVerse = allVersesArray[Math.floor(Math.random() * allVersesArray.length)];
-    const container = document.getElementById('random-verse-container');
-    if (container) {
-        container.innerHTML = `<p>"${randomVerse.text}"</p><footer>— ${randomVerse.reference}</footer>`;
-    }
-}
-
-function getDayOfYear() {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), 0, 0);
-    const diff = now - start;
-    const oneDay = 1000 * 60 * 60 * 24;
-    return Math.floor(diff / oneDay);
-}
-
-async function main() {
-    await loadData();
-    document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
-    displayRandomVerse();
-    if (allVersesArray.length > 0) {
-        setInterval(displayRandomVerse, 3600 * 1000);
-    }
-    displayDailyReading();
-}
-
-main();
+        if (container) container.innerHTML = `<p>
