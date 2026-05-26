@@ -23,28 +23,24 @@ async function loadData() {
         const kjvText = await kjvResponse.text();
         const planText = await planResponse.text();
 
-        // --- Parsing logic for kjv.csv ---
+        // --- REVERTED: Parsing logic for kjv.csv (comma-separated) ---
+        // This section now correctly handles comma-separated data for the KJV file.
         const kjvLines = kjvText.trim().split('\n');
         kjvLines.forEach(line => {
-            const trimmedLine = line.trim();
-            const match = trimmedLine.match(/^(.+?\s\d+:\d+)\s+(.*)$/);
-
-            if (match) {
-                const reference = match[1];
-                const text = match[2];
+            const parts = line.split(',');
+            if (parts.length >= 2) {
+                const reference = parts[0].trim();
+                // This correctly handles cases where the verse text itself contains commas
+                const text = parts.slice(1).join(',').trim();
                 allVersesArray.push({ reference, text });
             }
         });
 
-        // --- PARSING LOGIC CORRECTION FOR ChronoBiblePlan.csv ---
-        // This regex is now more robust. It handles spaces and an optional comma.
+        // --- UNCHANGED: Parsing logic for ChronoBiblePlan.csv (space-separated) ---
+        // This logic correctly handles the space-separated plan file and ignores stray commas.
         const planLines = planText.trim().split('\n');
         planLines.forEach(line => {
             const trimmedLine = line.trim();
-            
-            // Regex captures the day, skips optional spaces and an optional comma,
-            // then captures the rest of the line.
-            // This prevents the comma from being included in the 'references' variable.
             const match = trimmedLine.match(/^(\d+)\s*,?\s*(.*)$/);
 
             if (match) {
@@ -132,7 +128,7 @@ async function main() {
         setInterval(displayRandomVerse, 3600 * 1000); // Update every hour
     }
     
-    // Display the daily reading plan (will show "not found" if plan didn't load)
+    // Display the daily reading plan
     displayDailyReading();
 }
 
