@@ -3,49 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Digital Scribe's Desk</title>
+    <title>Daily and Random Bible Verse</title>
+    <!-- Link to your external stylesheet -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <header>
-        <h1>The Digital Scribe's Desk</h1>
-    </header>
-
-    <main class="container">
-        <!-- LEFT COLUMN -->
-        <section class="column left-column">
-            <div class="card">
-                <h2>Verse of the Hour</h2>
-                <div id="hourly-verse-container">
-                    <p>Loading verse...</p>
-                </div>
+    <div class="container">
+        <!-- Left Column: Random Verse -->
+        <div class="column">
+            <h2>Verse of the Hour</h2>
+            <div id="random-verse-container">
+                <p class="loading">Loading random verse...</p>
             </div>
+        </div>
 
-            <div class="card">
-                <h2>Today's Reading (Bible in One Year)</h2>
-                <div id="bioy-container">
-                    <!-- Reading schedule will be injected here by JavaScript -->
-                </div>
+        <!-- Right Column: Daily Reading -->
+        <div class="column">
+            <h2 id="daily-reading-title">Today's Reading</h2>
+            <div id="daily-reading-text">
+                <p class="loading">Loading reading plan...</p>
             </div>
-        </section>
+        </div>
+    </div>
 
-        <!-- RIGHT COLUMN -->
-        <aside class="column right-column">
-            <div class="card">
-                <h2>Verse Finder</h2>
-                <p>Enter a theme, keyword, or question to find relevant verses.</p>
-                <div class="search-form">
-                    <input type="text" id="search-input" placeholder="e.g., 'faith', 'love', 'forgiveness'">
-                    <button id="search-button">Enter</button>
-                </div>
-                <div id="search-results-container">
-                    <!-- Search results will be injected here by JavaScript -->
-                </div>
-            </div>
-        </aside>
-    </main>
+    <!-- Link to your external JavaScript file -->
+    <!-- 'defer' ensures the script runs after the HTML is parsed -->
+    <script src="script.js" defer></script>
 
-    <script src="script.js"></script>
 </body>
 </html>
