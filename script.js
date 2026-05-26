@@ -99,15 +99,29 @@ async function loadData() {
 /**
  * THE DEFINITIVE PARSER: Simple, robust, and step-by-step.
  * Returns chapter keys (e.g. "Genesis 1") for use with chapterLookup.
+ *
+ * Handles book names that start with a number (e.g. "1 Chronicles", "2 Kings").
+ * The book name is everything up to and including the first word after a leading
+ * digit-prefix (if any). The chapter/verse numbers come after the book name.
+ *
+ * Strategy: a leading digit followed by a space and letters is part of the book
+ * name. The chapter number starts at the LAST run of digits in the string that
+ * is preceded by a space (and not itself the book prefix).
+ * Simpler approach: match the book name with a regex that allows an optional
+ * leading digit, then capture the rest as the number part.
  */
 function expandPassage(passageStr) {
     const results = [];
-    
-    const firstDigitIndex = passageStr.search(/\d/);
-    if (firstDigitIndex === -1) return [];
 
-    const book = passageStr.substring(0, firstDigitIndex).trim();
-    const numberPart = passageStr.substring(firstDigitIndex).trim();
+    // Match: optional leading digit + letters/spaces for book name,
+    // then a space + digits... for the chapter/verse part.
+    // Group 1: book name (e.g. "1 Chronicles", "Genesis", "Song of Solomon")
+    // Group 2: chapter/verse number string (e.g. "26-29", "3:16", "1-5")
+    const bookMatch = passageStr.match(/^(\d\s+[A-Za-z][\w\s]*?|[A-Za-z][\w\s]*?)\s+(\d[\d\S]*)$/);
+    if (!bookMatch) return [];
+
+    const book = bookMatch[1].trim();
+    const numberPart = bookMatch[2].trim();
     const parts = numberPart.split(',');
 
     for (const part of parts) {
