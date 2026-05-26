@@ -3,9 +3,10 @@ const KJV_URL = 'kjv.csv';
 const PLAN_URL = 'ChronoBiblePlan.csv';
 
 // --- GLOBAL DATA STORES ---
-let allVersesArray = []; // Array for picking a random verse
-let verseLookup = new Map(); // Map for fast lookup by reference
-let planLookup = new Map(); // Map for the daily reading plan
+// allVersesArray is for the random verse generator (left column)
+let allVersesArray = []; 
+// planLookup is for the daily reading plan (right column)
+let planLookup = new Map(); 
 
 /**
  * Fetches and parses the CSV files into our data stores.
@@ -24,7 +25,7 @@ async function loadData() {
         const kjvText = await kjvResponse.text();
         const planText = await planResponse.text();
 
-        // Parse KJV data
+        // Parse KJV data for the random verse generator
         const kjvLines = kjvText.trim().split('\n');
         kjvLines.forEach(line => {
             const parts = line.split(',');
@@ -32,11 +33,10 @@ async function loadData() {
                 const reference = parts[0].trim();
                 const text = parts.slice(1).join(',').trim(); // Handle commas in verse text
                 allVersesArray.push({ reference, text });
-                verseLookup.set(reference, text);
             }
         });
 
-        // Parse Chronological Plan data
+        // Parse Chronological Plan data for the daily reading
         const planLines = planText.trim().split('\n');
         planLines.forEach(line => {
             const parts = line.split(',');
@@ -54,7 +54,7 @@ async function loadData() {
 }
 
 /**
- * Displays a random verse from the loaded KJV data.
+ * Displays a random verse from the loaded KJV data. (Left Column)
  */
 function displayRandomVerse() {
     if (allVersesArray.length === 0) return;
@@ -80,25 +80,8 @@ function getDayOfYear() {
 }
 
 /**
- * Expands a reference string (e.g., "Genesis 1:1-3") into an array of individual references.
- */
-function expandReferenceRange(refString) {
-    const rangeMatch = refString.match(/^(.*\s\d+:)(\d+)-(\d+)$/);
-    if (rangeMatch) {
-        const base = rangeMatch[1];
-        const start = parseInt(rangeMatch[2], 10);
-        const end = parseInt(rangeMatch[3], 10);
-        let verses = [];
-        for (let i = start; i <= end; i++) {
-            verses.push(`${base}${i}`);
-        }
-        return verses;
-    }
-    return [refString]; // Not a range
-}
-
-/**
- * Displays the reading for the current day.
+ * Displays the reading plan for the current day. (Right Column)
+ * This version ONLY shows the day and the references, not the full text.
  */
 function displayDailyReading() {
     const dayOfYear = getDayOfYear();
@@ -107,29 +90,23 @@ function displayDailyReading() {
     const titleEl = document.getElementById('daily-reading-title');
     const textEl = document.getElementById('daily-reading-text');
 
-    if (!readingRefs) {
-        titleEl.innerText = `Day ${dayOfYear}`;
-        textEl.innerHTML = `<p>No reading scheduled for today.</p>`;
-        return;
-    }
-
-    titleEl.innerText = `Today's Reading (Day ${dayOfYear}): ${readingRefs}`;
+    // Update the main title for the column
+    titleEl.innerText = `Today's Reading Plan`;
     
     let htmlOutput = '';
-    const passages = readingRefs.split(';').map(p => p.trim());
-    
-    passages.forEach(passage => {
-        const individualRefs = expandReferenceRange(passage);
-        individualRefs.forEach(ref => {
-            const text = verseLookup.get(ref);
-            if (text) {
-                htmlOutput += `<p><strong>${ref}:</strong> ${text}</p>`;
-            } else {
-                htmlOutput += `<p><strong>${ref}:</strong> <em style="color: #999;">--- Verse not found ---</em></p>`;
-            }
-        });
-    });
 
+    // Add the day of the year to the display
+    htmlOutput += `<p><strong>Day of the Year:</strong> ${dayOfYear}</p>`;
+
+    if (readingRefs) {
+        // Display the reference string directly from the plan file
+        htmlOutput += `<p><strong>Reading for Today:</strong> ${readingRefs}</p>`;
+    } else {
+        // Handle case where there is no reading for today
+        htmlOutput += `<p><strong>Reading for Today:</strong> No reading scheduled for today.</p>`;
+    }
+
+    // Set the content of the right column
     textEl.innerHTML = htmlOutput;
 }
 
@@ -139,16 +116,20 @@ function displayDailyReading() {
 async function main() {
     await loadData();
 
-    if (verseLookup.size > 0 && planLookup.size > 0) {
-        // Set up the random verse generator
+    // Check if data loaded successfully before setting up the page
+    if (allVersesArray.length > 0 && planLookup.size > 0) {
+        // Set up the random verse generator (left column)
         displayRandomVerse();
         setInterval(displayRandomVerse, 3600 * 1000); // Update every hour
 
-        // Set up the daily reading
+        // Set up the daily reading plan (right column)
         displayDailyReading();
+    } else {
+        // If data loading failed, the error message is already shown.
+        // We can hide the loading indicators.
+        document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
     }
 }
 
-// The 'defer' attribute in the <script> tag in index.html ensures this code runs
-// after the document is parsed, so we can just call main() directly.
+// Run the main function once the DOM is ready.
 main();
