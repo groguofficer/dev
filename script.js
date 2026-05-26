@@ -23,17 +23,10 @@ async function loadData() {
         const kjvText = await kjvResponse.text();
         const planText = await planResponse.text();
 
-        // --- PARSING LOGIC CORRECTION FOR kjv.csv ---
-        // This section is updated to handle space-separated reference and text.
+        // --- Parsing logic for kjv.csv ---
         const kjvLines = kjvText.trim().split('\n');
         kjvLines.forEach(line => {
             const trimmedLine = line.trim();
-            
-            // Regex to capture the full reference (including multi-word books) 
-            // and the verse text separately.
-            // Example: "1 Samuel 1:1 Now there was a certain man..."
-            // match[1] will be "1 Samuel 1:1"
-            // match[2] will be "Now there was a certain man..."
             const match = trimmedLine.match(/^(.+?\s\d+:\d+)\s+(.*)$/);
 
             if (match) {
@@ -43,12 +36,16 @@ async function loadData() {
             }
         });
 
-        // --- PARSING LOGIC FOR ChronoBiblePlan.csv ---
-        // This logic correctly handles the space-separated plan file.
+        // --- PARSING LOGIC CORRECTION FOR ChronoBiblePlan.csv ---
+        // This regex is now more robust. It handles spaces and an optional comma.
         const planLines = planText.trim().split('\n');
         planLines.forEach(line => {
             const trimmedLine = line.trim();
-            const match = trimmedLine.match(/^(\d+)\s+(.*)$/);
+            
+            // Regex captures the day, skips optional spaces and an optional comma,
+            // then captures the rest of the line.
+            // This prevents the comma from being included in the 'references' variable.
+            const match = trimmedLine.match(/^(\d+)\s*,?\s*(.*)$/);
 
             if (match) {
                 const day = match[1];
@@ -69,17 +66,19 @@ async function loadData() {
 function displayRandomVerse() {
     if (allVersesArray.length === 0) {
         const container = document.getElementById('random-verse-container');
-        container.innerHTML = `<p>Could not load any verses.</p>`;
+        if (container) container.innerHTML = `<p>Could not load any verses.</p>`;
         return;
     }
 
     const randomVerse = allVersesArray[Math.floor(Math.random() * allVersesArray.length)];
     const container = document.getElementById('random-verse-container');
     
-    container.innerHTML = `
-        <p>"${randomVerse.text}"</p>
-        <footer>— ${randomVerse.reference}</footer>
-    `;
+    if (container) {
+        container.innerHTML = `
+            <p>"${randomVerse.text}"</p>
+            <footer>— ${randomVerse.reference}</footer>
+        `;
+    }
 }
 
 /**
@@ -103,10 +102,11 @@ function displayDailyReading() {
     const titleEl = document.getElementById('daily-reading-title');
     const textEl = document.getElementById('daily-reading-text');
 
+    if (!titleEl || !textEl) return;
+
     titleEl.innerText = `Today's Reading Plan`;
     
-    let htmlOutput = '';
-    htmlOutput += `<p><strong>Day of the Year:</strong> ${dayOfYear}</p>`;
+    let htmlOutput = `<p><strong>Day of the Year:</strong> ${dayOfYear}</p>`;
 
     if (readingRefs) {
         htmlOutput += `<p><strong>Reading for Today:</strong> ${readingRefs}</p>`;
@@ -123,18 +123,17 @@ function displayDailyReading() {
 async function main() {
     await loadData();
 
-    // Check if data loaded successfully before setting up the page
+    // Hide loading indicators once data processing is done
+    document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
+
+    // Set up the random verse generator if verses were loaded
     if (allVersesArray.length > 0) {
-        // Set up the random verse generator (left column)
         displayRandomVerse();
         setInterval(displayRandomVerse, 3600 * 1000); // Update every hour
     }
     
-    // The daily reading display should run regardless, to show "not found" if needed.
+    // Display the daily reading plan (will show "not found" if plan didn't load)
     displayDailyReading();
-
-    // Hide loading indicators
-    document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
 }
 
 // Run the main function.
