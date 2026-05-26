@@ -32,7 +32,8 @@ async function loadData() {
             if (parts.length < 2) return;
 
             const reference = parts[0].trim();
-            const text = parts.slice(1).join(',').trim().replace(/^"|"$/g, ''); // Remove surrounding quotes
+            // Remove quotes that might surround the text
+            const text = parts.slice(1).join(',').trim().replace(/^"|"$/g, '');
             
             verseLookup.set(reference, text);
             allVersesArray.push({ reference, text });
@@ -64,53 +65,55 @@ async function loadData() {
 }
 
 /**
- * NEW ROBUST PARSER: This is the core of the new logic.
- * It intelligently handles complex, comma-separated chapter lists.
+ * FINAL PARSER: A robust, step-by-step function to expand any passage.
  */
-function parsePassage(passageStr) {
+function expandPassage(passageStr) {
     const results = [];
     
-    // Find the book name. This regex finds the longest string at the start
-    // that ends with a letter, before the numbers start.
-    const bookMatch = passageStr.match(/^([1-3]?\s?[a-zA-Z\s]+[a-zA-Z])/);
-    if (!bookMatch) return []; // Cannot determine a book
+    // Step 1: Find the book name. This is our context.
+    const bookMatch = passageStr.match(/^([1-3]?\s?[A-Za-z\s]+[A-Za-z])/);
+    if (!bookMatch) return []; // Cannot determine a book, exit.
     
     const book = bookMatch[1].trim();
     
-    // Get the part of the string with the chapter/verse numbers
+    // Step 2: Get the rest of the string (the numbers) and split by comma.
     const numberPart = passageStr.substring(book.length).trim();
-    
-    // Split the number part by commas
     const parts = numberPart.split(',');
 
     for (const part of parts) {
         const trimmedPart = part.trim();
         if (!trimmedPart) continue;
 
-        // Re-attach the book name to create a standard reference
-        const fullRef = `${book} ${trimmedPart}`;
+        // Step 3: For each part, determine its type and expand it.
 
-        // Now we parse this standard reference (e.g., "Psalm 138-139")
-        
-        // Case 1: Chapter Range (e.g., "Psalm 138-139")
-        const chapRangeMatch = fullRef.match(/^(.*\D)\s*(\d+)-(\d+)$/);
-        if (chapRangeMatch) {
-            const baseBook = chapRangeMatch[1].trim();
-            const startChap = parseInt(chapRangeMatch[2], 10);
-            const endChap = parseInt(chapRangeMatch[3], 10);
-            for (let i = startChap; i <= endChap; i++) {
-                const chapterKey = `${baseBook} ${i}`;
+        // Type A: Chapter Range (e.g., "1-2" or "138-139")
+        if (trimmedPart.includes('-') && !trimmedPart.includes(':')) {
+            const [start, end] = trimmedPart.split('-').map(n => parseInt(n, 10));
+            for (let i = start; i <= end; i++) {
+                const chapterKey = `${book} ${i}`;
                 const verses = chapterVerseMap.get(chapterKey) || [];
                 verses.forEach(v => results.push(`${chapterKey}:${v}`));
             }
-            continue; // Go to next part
         }
-
-        // Case 2: Full Chapter (e.g., "Psalm 131")
-        const verses = chapterVerseMap.get(fullRef);
-        if (verses) {
-            verses.forEach(v => results.push(`${fullRef}:${v}`));
-            continue; // Go to next part
+        // Type B: Verse Range (e.g., "1:1-5")
+        else if (trimmedPart.includes('-') && trimmedPart.includes(':')) {
+            const [chapter, verseRange] = trimmedPart.split(':');
+            const [start, end] = verseRange.split('-').map(n => parseInt(n, 10));
+            const chapterKey = `${book} ${chapter}`;
+            for (let i = start; i <= end; i++) {
+                results.push(`${chapterKey}:${i}`);
+            }
+        }
+        // Type C: Single Verse (e.g., "1:16")
+        else if (trimmedPart.includes(':')) {
+            const chapterKey = `${book} ${trimmedPart}`;
+            results.push(chapterKey);
+        }
+        // Type D: Single Full Chapter (e.g., "131")
+        else {
+            const chapterKey = `${book} ${trimmedPart}`;
+            const verses = chapterVerseMap.get(chapterKey) || [];
+            verses.forEach(v => results.push(`${chapterKey}:${v}`));
         }
     }
     
@@ -119,7 +122,7 @@ function parsePassage(passageStr) {
 
 
 /**
- * DEBUGGING VERSION: Displays the LIST of generated verse references.
+ * FINAL VERSION: Displays the FULL TEXT of the daily reading.
  */
 function displayDailyReading() {
     const dayOfYear = getDayOfYear();
@@ -140,36 +143,22 @@ function displayDailyReading() {
     // Handle multiple passages separated by semicolons
     const passages = readingPlanString.split(';').map(p => p.trim());
     let allVersesForDay = [];
-    let failedPassages = [];
-
     for (const passage of passages) {
-        const expanded = parsePassage(passage);
-        if (expanded.length > 0) {
-            allVersesForDay.push(...expanded);
-        } else {
-            failedPassages.push(passage);
-        }
+        allVersesForDay.push(...expandPassage(passage));
     }
 
     let htmlOutput = `<p><strong>Reading Plan:</strong> ${readingPlanString}</p><hr>`;
     
     if (allVersesForDay.length > 0) {
-        htmlOutput += `<p><strong>Generated Verse References (${allVersesForDay.length} total):</strong></p>`;
-        htmlOutput += `<pre style="white-space: pre-wrap; word-break: break-all;">${allVersesForDay.join('\n')}</pre>`;
-    }
-    
-    if (failedPassages.length > 0) {
-        htmlOutput += `<p style="color: red;"><strong>Could not parse the following parts of the plan:</strong></p>`;
-        htmlOutput += `<pre style="color: red;">${failedPassages.join('\n')}</pre>`;
+        for (const verseRef of allVersesForDay) {
+            const text = verseLookup.get(verseRef) || `--- VERSE NOT FOUND for ${verseRef} ---`;
+            htmlOutput += `<p><strong>${verseRef}:</strong> ${text}</p>`;
+        }
+    } else {
+        htmlOutput += `<p style="color: red;"><em>Could not expand references from the plan. Please check the format in ChronoBiblePlan.csv.</em></p>`;
     }
 
-    if (allVersesForDay.length === 0 && failedPassages.length > 0) {
-        textEl.innerHTML = htmlOutput; // Show only error if nothing worked
-    } else if (allVersesForDay.length === 0 && failedPassages.length === 0) {
-        textEl.innerHTML = `<p><em>Could not expand references from the plan. The parser returned nothing.</em></p>`;
-    } else {
-        textEl.innerHTML = htmlOutput; // Show results and any errors
-    }
+    textEl.innerHTML = htmlOutput;
 }
 
 // --- Other functions (unchanged) ---
