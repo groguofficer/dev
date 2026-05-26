@@ -3,10 +3,8 @@ const KJV_URL = 'kjv.csv';
 const PLAN_URL = 'ChronoBiblePlan.csv';
 
 // --- GLOBAL DATA STORES ---
-// allVersesArray is for the random verse generator (left column)
-let allVersesArray = []; 
-// planLookup is for the daily reading plan (right column)
-let planLookup = new Map(); 
+let allVersesArray = []; // For the random verse generator
+let planLookup = new Map(); // For the daily reading plan
 
 /**
  * Fetches and parses the CSV files into our data stores.
@@ -25,31 +23,34 @@ async function loadData() {
         const kjvText = await kjvResponse.text();
         const planText = await planResponse.text();
 
-        // Parse KJV data for the random verse generator
+        // --- PARSING LOGIC CORRECTION FOR kjv.csv ---
+        // This section is updated to handle space-separated reference and text.
         const kjvLines = kjvText.trim().split('\n');
         kjvLines.forEach(line => {
-            const parts = line.split(',');
-            if (parts.length >= 2) {
-                const reference = parts[0].trim();
-                const text = parts.slice(1).join(',').trim(); // Handle commas in verse text
+            const trimmedLine = line.trim();
+            
+            // Regex to capture the full reference (including multi-word books) 
+            // and the verse text separately.
+            // Example: "1 Samuel 1:1 Now there was a certain man..."
+            // match[1] will be "1 Samuel 1:1"
+            // match[2] will be "Now there was a certain man..."
+            const match = trimmedLine.match(/^(.+?\s\d+:\d+)\s+(.*)$/);
+
+            if (match) {
+                const reference = match[1];
+                const text = match[2];
                 allVersesArray.push({ reference, text });
             }
         });
 
-        // --- PARSING LOGIC CORRECTION FOR ChronoBiblePlan.csv ---
-        // This section is updated to handle space-separated values.
+        // --- PARSING LOGIC FOR ChronoBiblePlan.csv ---
+        // This logic correctly handles the space-separated plan file.
         const planLines = planText.trim().split('\n');
         planLines.forEach(line => {
             const trimmedLine = line.trim();
-            
-            // Use a regular expression to find the first block of numbers (the day)
-            // and capture the rest of the line as the reference.
-            // This correctly handles "1 Genesis 1-3" and skips the header row.
             const match = trimmedLine.match(/^(\d+)\s+(.*)$/);
 
             if (match) {
-                // match[1] is the captured day number (e.g., "1")
-                // match[2] is the captured reference string (e.g., "Genesis 1-3")
                 const day = match[1];
                 const references = match[2].trim();
                 planLookup.set(day, references);
@@ -66,7 +67,11 @@ async function loadData() {
  * Displays a random verse from the loaded KJV data. (Left Column)
  */
 function displayRandomVerse() {
-    if (allVersesArray.length === 0) return;
+    if (allVersesArray.length === 0) {
+        const container = document.getElementById('random-verse-container');
+        container.innerHTML = `<p>Could not load any verses.</p>`;
+        return;
+    }
 
     const randomVerse = allVersesArray[Math.floor(Math.random() * allVersesArray.length)];
     const container = document.getElementById('random-verse-container');
@@ -118,21 +123,18 @@ function displayDailyReading() {
 async function main() {
     await loadData();
 
-    if (allVersesArray.length > 0 && planLookup.size > 0) {
+    // Check if data loaded successfully before setting up the page
+    if (allVersesArray.length > 0) {
         // Set up the random verse generator (left column)
         displayRandomVerse();
         setInterval(displayRandomVerse, 3600 * 1000); // Update every hour
-
-        // Set up the daily reading plan (right column)
-        displayDailyReading();
-    } else {
-        // If data loading failed or the plan is empty, ensure the UI reflects this.
-        document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
-        // If the plan is empty but the bible loaded, still show the daily reading "not found" message
-        if (planLookup.size === 0) {
-            displayDailyReading();
-        }
     }
+    
+    // The daily reading display should run regardless, to show "not found" if needed.
+    displayDailyReading();
+
+    // Hide loading indicators
+    document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
 }
 
 // Run the main function.
