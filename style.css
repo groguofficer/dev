@@ -205,6 +205,15 @@ body {
 #daily-reading-text hr  { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 #daily-reading-text strong { color: var(--ink); }
 
+#daily-reading-text {
+    max-height: 80vh;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+#daily-reading-text::-webkit-scrollbar       { width: 4px; }
+#daily-reading-text::-webkit-scrollbar-track { background: transparent; }
+#daily-reading-text::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
 /* ============================================================
    FOOTER
    ============================================================ */
