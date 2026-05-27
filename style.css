@@ -113,7 +113,6 @@ body {
     letter-spacing: 0.05em;
     font-style: normal;
 }
-
 .refresh-btn {
     position: absolute;
     top: 16px; right: 16px;
@@ -126,8 +125,7 @@ body {
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: background 0.15s, color 0.15s, transform 0.25s;
-    padding: 0;
-    line-height: 1;
+    padding: 0; line-height: 1;
 }
 .refresh-btn:hover {
     background: #fdf6e3;
