@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Bible & Devotional</title>
+    <title>Daily Bible &amp; Devotional</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
@@ -31,8 +31,7 @@
                 <div id="random-verse-container">
                     <p>Loading verse…</p>
                 </div>
-                <!-- onclick uses window.refreshVerse, set in script1.js before defer runs -->
-                <button class="refresh-btn" onclick="window.refreshVerse && window.refreshVerse()" title="New verse">↻</button>
+                <button class="refresh-btn" id="refresh-btn" title="New verse">↻</button>
             </section>
 
             <!-- Section 2: Spurgeon Morning & Evening -->
@@ -62,7 +61,8 @@
         <p>"Thy word is a lamp unto my feet, and a light unto my path." — Psalm 119:105</p>
     </footer>
 
-    <script src="script1.js" defer></script>
+    <!-- Script at bottom of body — no defer needed; DOM is already parsed -->
+    <script src="script1.js"></script>
 
 </body>
 </html>
