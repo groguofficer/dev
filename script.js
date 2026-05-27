@@ -1,180 +1,161 @@
 // --- CONFIGURATION ---
-const KJV_URL      = 'kjv.csv';
+const KJV_URL         = 'kjv.csv';
 const KJV_CHAPTER_URL = 'kjv_by_chapter.csv';
-const PLAN_URL     = 'ChronoBiblePlan.csv';
-const SPURGEON_URL = 'spurgeon_morning_and_evening.csv';
+const PLAN_URL        = 'ChronoBiblePlan.csv';
+const SPURGEON_URL    = 'spurgeon_morning_and_evening.csv';
 
 // --- GLOBAL DATA STORES ---
 let allVersesArray = [];
 let chapterLookup  = new Map();
 let planLookup     = new Map();
-let spurgeonLookup = new Map(); // key: "January 1" → { Morning: "...", Evening: "..." }
+let spurgeonLookup = new Map();
 
 // ============================================================
-//  CSV PARSERS
+//  FULL RFC-4180 CSV PARSER
+//  Handles quoted fields with embedded commas AND newlines.
 // ============================================================
-
-/**
- * Full RFC-4180 CSV parser.
- * Correctly handles quoted fields that contain commas AND embedded newlines.
- * Returns an array of rows, each row being an array of field strings.
- */
 function parseCSVFull(text) {
     const rows = [];
-    let row = [];
+    let row   = [];
     let field = '';
-    let inQuotes = false;
-    let i = 0;
+    let inQ   = false;
+    let i     = 0;
 
     while (i < text.length) {
         const ch = text[i];
-
-        if (inQuotes) {
-            if (ch === '"') {
-                // Peek ahead: two double-quotes = escaped quote inside field
-                if (text[i + 1] === '"') {
-                    field += '"';
-                    i += 2;
-                } else {
-                    inQuotes = false;
-                    i++;
-                }
+        if (inQ) {
+            if (ch === '"' && text[i + 1] === '"') { // escaped quote ""
+                field += '"'; i += 2;
+            } else if (ch === '"') {
+                inQ = false; i++;
             } else {
-                field += ch;
-                i++;
+                field += ch; i++;
             }
         } else {
             if (ch === '"') {
-                inQuotes = true;
-                i++;
+                inQ = true; i++;
             } else if (ch === ',') {
-                row.push(field);
-                field = '';
-                i++;
+                row.push(field); field = ''; i++;
             } else if (ch === '\r' && text[i + 1] === '\n') {
-                row.push(field);
-                rows.push(row);
-                row = [];
-                field = '';
-                i += 2;
+                row.push(field); rows.push(row); row = []; field = ''; i += 2;
             } else if (ch === '\n') {
-                row.push(field);
-                rows.push(row);
-                row = [];
-                field = '';
-                i++;
+                row.push(field); rows.push(row); row = []; field = ''; i++;
             } else {
-                field += ch;
-                i++;
+                field += ch; i++;
             }
         }
     }
-
-    // Last field/row
-    if (field || row.length > 0) {
-        row.push(field);
-        rows.push(row);
-    }
-
+    if (row.length > 0 || field) { row.push(field); rows.push(row); }
     return rows;
+}
+
+// ============================================================
+//  SAFE FETCH  — never throws; returns null on failure
+// ============================================================
+async function safeFetch(url) {
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+            showError(`Could not load "${url}" (HTTP ${res.status}). Make sure the file exists and you are running from a web server, not file://.`);
+            return null;
+        }
+        return await res.text();
+    } catch (e) {
+        showError(`Network error loading "${url}": ${e.message}. Make sure you are running from a local web server (e.g. VS Code Live Server), not directly from the filesystem.`);
+        return null;
+    }
+}
+
+function showError(msg) {
+    let box = document.getElementById('_error_box');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = '_error_box';
+        box.style.cssText = 'background:#fff0f0;border:1px solid #c00;color:#700;padding:12px 16px;margin:16px 24px;border-radius:4px;font-family:monospace;font-size:0.82rem;white-space:pre-wrap;';
+        document.body.insertBefore(box, document.body.firstChild);
+    }
+    box.textContent += msg + '\n';
 }
 
 // ============================================================
 //  DATA LOADING
 // ============================================================
-
-async function fetchText(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
-    return res.text();
-}
-
 async function loadData() {
-    // Load core files — if these fail, show an error
-    let kjvText, kjvChapterText, planText;
-    try {
-        [kjvText, kjvChapterText, planText] = await Promise.all([
-            fetchText(KJV_URL),
-            fetchText(KJV_CHAPTER_URL),
-            fetchText(PLAN_URL)
-        ]);
-    } catch (err) {
-        console.error('Failed to load core Bible data:', err);
-        document.body.innerHTML = `<p style="color:red;text-align:center;padding:40px;">
-            Error: Could not load data files (${err.message}).<br>
-            Make sure you are running this from a local web server, not directly from the filesystem.
-        </p>`;
-        return;
+    // Fetch all four files concurrently; safeFetch returns null on failure
+    const [kjvText, kjvChapterText, planText, spurgeonText] = await Promise.all([
+        safeFetch(KJV_URL),
+        safeFetch(KJV_CHAPTER_URL),
+        safeFetch(PLAN_URL),
+        safeFetch(SPURGEON_URL)
+    ]);
+
+    // --- kjv.csv → allVersesArray ---
+    // Format: Genesis 1:1,"In the beginning..."  (no header, simple comma sep)
+    if (kjvText) {
+        kjvText.trim().split('\n').forEach(line => {
+            const comma = line.indexOf(',');
+            if (comma === -1) return;
+            const reference = line.slice(0, comma).trim();
+            const text = line.slice(comma + 1).trim().replace(/^"|"$/g, '');
+            if (reference && text) allVersesArray.push({ reference, text });
+        });
     }
 
-    // --- Parse kjv.csv (for random verse) ---
-    // Format: Reference,Verse text  (no header, no quoting)
-    kjvText.trim().split('\n').forEach(line => {
-        const comma = line.indexOf(',');
-        if (comma === -1) return;
-        const reference = line.slice(0, comma).trim();
-        const text = line.slice(comma + 1).trim().replace(/^"|"$/g, '');
-        if (reference && text) allVersesArray.push({ reference, text });
-    });
+    // --- kjv_by_chapter.csv → chapterLookup ---
+    // Format: Chapter,"All verses as one string"  (has header row)
+    if (kjvChapterText) {
+        parseCSVFull(kjvChapterText).forEach((row, i) => {
+            if (i === 0) return; // skip header
+            if (row.length < 2) return;
+            const ch = row[0].trim(), tx = row[1].trim();
+            if (ch) chapterLookup.set(ch, tx);
+        });
+    }
 
-    // --- Parse kjv_by_chapter.csv (for daily reading) ---
-    // Format: Chapter,"All verses..."  (has header row)
-    const chapterRows = parseCSVFull(kjvChapterText);
-    chapterRows.forEach((row, idx) => {
-        if (idx === 0) return; // skip header
-        if (row.length < 2) return;
-        const chapter = row[0].trim();
-        const text    = row[1].trim();
-        if (chapter) chapterLookup.set(chapter, text);
-    });
+    // --- ChronoBiblePlan.csv → planLookup ---
+    if (planText) {
+        planText.trim().split('\n').forEach(line => {
+            const m = line.trim().match(/^(\d+)\s*,?\s*(.*)$/);
+            if (m) planLookup.set(m[1], m[2].trim());
+        });
+    }
 
-    // --- Parse ChronoBiblePlan.csv ---
-    planText.trim().split('\n').forEach(line => {
-        const match = line.trim().match(/^(\d+)\s*,?\s*(.*)$/);
-        if (match) planLookup.set(match[1], match[2].trim());
-    });
-
-    // --- Parse spurgeon_morning_and_evening.csv (optional) ---
-    // This file has multiline quoted fields, so we MUST use the full CSV parser.
-    try {
-        const spurgeonText = await fetchText(SPURGEON_URL);
-        const rows = parseCSVFull(spurgeonText);
-        rows.forEach((row, idx) => {
-            if (idx === 0) return; // skip header: "date","time","content"
+    // --- spurgeon_morning_and_evening.csv → spurgeonLookup ---
+    // Format: "date","time","content"  — content has embedded newlines → need full parser
+    if (spurgeonText) {
+        parseCSVFull(spurgeonText).forEach((row, i) => {
+            if (i === 0) return; // skip header
             if (row.length < 3) return;
-            const date    = row[0].trim();
-            const time    = row[1].trim();
-            const content = row[2].trim();
+            const date = row[0].trim(), time = row[1].trim(), content = row[2].trim();
             if (!date || !time || !content) return;
             if (!spurgeonLookup.has(date)) spurgeonLookup.set(date, {});
             spurgeonLookup.get(date)[time] = content;
         });
-    } catch (err) {
-        console.warn('Spurgeon file could not be loaded:', err.message);
-        // Non-fatal — other sections still work
     }
 }
 
 // ============================================================
-//  DISPLAY FUNCTIONS
+//  DISPLAY: RANDOM VERSE
 // ============================================================
-
 function displayRandomVerse() {
-    const container = document.getElementById('random-verse-container');
-    if (!container) return;
-    if (allVersesArray.length === 0) {
-        container.innerHTML = `<p>Could not load any verses. Check that kjv.csv is present.</p>`;
+    const el = document.getElementById('random-verse-container');
+    if (!el) return;
+    if (!allVersesArray.length) {
+        el.innerHTML = '<p>Verse data not loaded — check error above.</p>';
         return;
     }
     const v = allVersesArray[Math.floor(Math.random() * allVersesArray.length)];
-    container.innerHTML = `<p>"${v.text}"</p><footer>— ${v.reference}</footer>`;
+    el.innerHTML = `<p>"${v.text}"</p><footer>— ${v.reference}</footer>`;
 }
 
+// ============================================================
+//  DISPLAY: SPURGEON
+// ============================================================
 function getTodayDateKey() {
     const months = ['January','February','March','April','May','June',
                     'July','August','September','October','November','December'];
-    const now = new Date();
-    return `${months[now.getMonth()]} ${now.getDate()}`;
+    const d = new Date();
+    return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
 function displaySpurgeon() {
@@ -185,9 +166,14 @@ function displaySpurgeon() {
     const dateKey = getTodayDateKey();
     if (labelEl) labelEl.textContent = dateKey;
 
+    if (!spurgeonLookup.size) {
+        container.innerHTML = '<p class="not-found">Spurgeon data not loaded — check error above.</p>';
+        return;
+    }
+
     const entries = spurgeonLookup.get(dateKey);
     if (!entries) {
-        container.innerHTML = `<p class="not-found">No devotional found for ${dateKey}.</p>`;
+        container.innerHTML = `<p class="not-found">No devotional entry found for "${dateKey}".</p>`;
         return;
     }
 
@@ -196,107 +182,105 @@ function displaySpurgeon() {
         const text = entries[session];
         if (!text) return;
 
-        // Pull out the opening scripture reference: "...verse text..."-Book chapter:verse
-        // Pattern: opening quote, text, closing quote, dash, book ref with digits
+        // The content from the CSV looks like:
+        // "They did eat of the fruit..."-Joshua 5:12  Body text here...
+        // Extract the scripture ref (everything up to and including the book:chapter ref)
         let verseRef = '';
         let body = text;
-        const refMatch = text.match(/^(\u201c[^\u201d]*\u201d\s*[-\u2013\u2014]\s*[A-Za-z0-9 :]+)/);
+        const refMatch = text.match(/^(".*?"-[A-Za-z0-9 ]+\d+:\d+)/);
         if (refMatch) {
-            verseRef = refMatch[1].trim();
+            verseRef = refMatch[1];
             body = text.slice(refMatch[0].length).trim();
-        } else {
-            // Fallback: try straight quotes
-            const refMatch2 = text.match(/^(".*?"\s*-\s*[\w\s]+\d+:\d+)/);
-            if (refMatch2) {
-                verseRef = refMatch2[1].trim();
-                body = text.slice(refMatch2[0].length).trim();
-            }
         }
 
         if (idx > 0) html += '<hr class="spurgeon-divider">';
         html += `<div class="spurgeon-entry">`;
-        html += `  <div class="spurgeon-time">${session}</div>`;
-        if (verseRef) html += `  <div class="spurgeon-verse">${verseRef}</div>`;
-        html += `  <div class="spurgeon-body">${body}</div>`;
+        html += `<div class="spurgeon-time">${session}</div>`;
+        if (verseRef) html += `<div class="spurgeon-verse">${verseRef}</div>`;
+        html += `<div class="spurgeon-body">${body}</div>`;
         html += `</div>`;
     });
 
     container.innerHTML = html || `<p class="not-found">No entries for ${dateKey}.</p>`;
 }
 
+// ============================================================
+//  DISPLAY: DAILY READING
+// ============================================================
+function getDayOfYear() {
+    const now = new Date();
+    return Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+}
+
 function expandPassage(passageStr) {
-    const results = [];
+    const results  = [];
     const bookMatch = passageStr.match(/^(\d\s+[A-Za-z][\w\s]*?|[A-Za-z][\w\s]*?)\s+(\d[\d\S]*)$/);
     if (!bookMatch) return [];
     const book = bookMatch[1].trim();
-    const parts = bookMatch[2].trim().split(',');
-    for (const part of parts) {
+    bookMatch[2].trim().split(',').forEach(part => {
         const p = part.trim();
-        if (!p) continue;
+        if (!p) return;
         if (p.includes('-') && !p.includes(':')) {
-            const [s, e] = p.split('-').map(n => parseInt(n, 10));
+            const [s, e] = p.split('-').map(Number);
             for (let i = s; i <= e; i++) results.push(`${book} ${i}`);
         } else if (p.includes(':')) {
             results.push(`${book} ${p.split(':')[0]}`);
         } else {
             results.push(`${book} ${p}`);
         }
-    }
+    });
     return [...new Set(results)];
 }
 
 function displayDailyReading() {
-    const dayOfYear = getDayOfYear();
     const titleEl = document.getElementById('daily-reading-title');
     const textEl  = document.getElementById('daily-reading-text');
     if (!titleEl || !textEl) return;
 
-    titleEl.innerText = `Today's Reading (Day ${dayOfYear})`;
-    const planStr = planLookup.get(dayOfYear.toString());
+    const day    = getDayOfYear();
+    const planStr = planLookup.get(String(day));
+    titleEl.innerText = `Today's Reading (Day ${day})`;
+
     if (!planStr) {
-        textEl.innerHTML = `<p>No reading scheduled for today.</p>`;
+        textEl.innerHTML = '<p>No reading scheduled for today.</p>';
         return;
     }
 
     const chapters = planStr.split(';').flatMap(p => expandPassage(p.trim()));
     let html = `<p><strong>Reading Plan:</strong> ${planStr}</p><hr>`;
-    if (chapters.length > 0) {
-        for (const key of chapters) {
-            const text = chapterLookup.get(key);
-            html += text
-                ? `<h3>${key}</h3><p>${text}</p>`
+    if (chapters.length) {
+        chapters.forEach(key => {
+            const tx = chapterLookup.get(key);
+            html += tx
+                ? `<h3>${key}</h3><p>${tx}</p>`
                 : `<p style="color:red;">--- CHAPTER NOT FOUND: ${key} ---</p>`;
-        }
+        });
     } else {
-        html += `<p style="color:red;"><strong>Parser Failure:</strong> Could not parse plan string.</p>`;
+        html += `<p style="color:red;"><strong>Parser Failure:</strong> Could not parse "${planStr}"</p>`;
     }
     textEl.innerHTML = html;
-}
-
-function getDayOfYear() {
-    const now   = new Date();
-    const start = new Date(now.getFullYear(), 0, 0);
-    return Math.floor((now - start) / 86400000);
 }
 
 // ============================================================
 //  MAIN
 // ============================================================
-
 async function main() {
     await loadData();
-
     displayRandomVerse();
     displaySpurgeon();
     displayDailyReading();
-
-    // Rotate verse every hour
-    if (allVersesArray.length > 0) {
+    if (allVersesArray.length) {
         setInterval(displayRandomVerse, 3600 * 1000);
     }
 }
 
-// Expose refresh function for the button (works with defer)
+// Expose for the refresh button (works with defer since onclick runs after defer)
 window.refreshVerse = displayRandomVerse;
 
-main();
+main().catch(err => showError('Unexpected error in main(): ' + err.message));
+
+// Wire up the refresh button via addEventListener (more reliable than onclick with async scripts)
+document.addEventListener("DOMContentLoaded", function() {
+    var btn = document.getElementById("refresh-btn");
+    if (btn) btn.addEventListener("click", displayRandomVerse);
+});
