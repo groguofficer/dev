@@ -67,7 +67,7 @@ async function safeFetch(url) {
         return await res.text();
     } catch (e) {
         showError('Cannot fetch "' + url + '": ' + e.message +
-            '\n  → Run this page from a local web server (e.g. VS Code Live Server), not directly from file://');
+            '\n  → Run from a local web server (e.g. VS Code Live Server), not file://');
         return null;
     }
 }
@@ -112,23 +112,33 @@ async function loadData() {
     }
 
     // --- ChronoBiblePlan.csv ---
-    // Header row: Day of the year\tBible verses   (TAB-separated)
-    // Data rows:  1\tGenesis 1-3
+    // Has a header row. Day column is always a plain integer.
+    // Separator between day and reading may be tab OR comma — handle both.
+    // Also handles Windows \r\n line endings.
     if (planText) {
         planText.trim().split('\n').forEach(function(line, i) {
-            line = line.replace(/\r$/, ''); // strip Windows \r
-            if (i === 0) return;            // skip header
-            var tab = line.indexOf('\t');
-            if (tab === -1) return;
-            var day     = line.slice(0, tab).trim();
-            var reading = line.slice(tab + 1).trim();
-            if (day && reading) planLookup.set(day, reading);
+            line = line.replace(/\r$/, '');  // strip Windows carriage return
+            if (i === 0) return;             // skip header row
+
+            // Try tab first, then comma, then 2+ spaces as separator
+            var sep = line.indexOf('\t');
+            if (sep === -1) sep = line.indexOf(',');
+
+            if (sep !== -1) {
+                var day     = line.slice(0, sep).trim();
+                var reading = line.slice(sep + 1).trim();
+                if (day && reading) planLookup.set(day, reading);
+                return;
+            }
+            // Fallback: number followed by 2+ spaces then reading
+            var m = line.match(/^(\d+)\s{2,}(.+)$/);
+            if (m) planLookup.set(m[1], m[2].trim());
         });
     }
 
     // --- spurgeon_morning_and_evening.csv ---
     // Header: "date","time","content"
-    // Content fields span multiple lines → must use full CSV parser
+    // Content fields span multiple lines → must use full CSV parser.
     if (spurgeonText) {
         parseCSVFull(spurgeonText).forEach(function(row, i) {
             if (i === 0) return;
@@ -191,8 +201,6 @@ function displaySpurgeon() {
         if (!text) return;
 
         // Content starts with "Verse text"-Book chapter:verse  Body...
-        // After CSV parsing, double-quotes inside the field become single quotes,
-        // so it looks like: "They did eat..."-Joshua 5:12 Body here
         var verseRef = '', body = text;
         var m = text.match(/^(".*?"-[A-Za-z0-9 ]+\d+:\d+)/);
         if (m) { verseRef = m[1]; body = text.slice(m[0].length).trim(); }
@@ -234,14 +242,13 @@ function expandPassage(str) {
             var e = parseInt(p.split('-')[1], 10);
             for (var i = s; i <= e; i++) results.push(book + ' ' + i);
         } else if (p.indexOf(':') !== -1) {
-            // verse ref: 3:16 or 1:1-5 → just the chapter
+            // verse ref like 3:16 — return whole chapter
             results.push(book + ' ' + p.split(':')[0]);
         } else {
-            // single chapter: 1
+            // single chapter
             results.push(book + ' ' + p);
         }
     });
-    // deduplicate
     return results.filter(function(v, i, a) { return a.indexOf(v) === i; });
 }
 
@@ -255,7 +262,12 @@ function displayDailyReading() {
     titleEl.innerText = "Today's Reading (Day " + day + ")";
 
     if (!planStr) {
-        textEl.innerHTML = '<p>No reading found for day ' + day + '.</p>';
+        // Show diagnostic info so we can debug further if needed
+        var keys = [];
+        planLookup.forEach(function(v, k) { if (keys.length < 5) keys.push(k); });
+        textEl.innerHTML = '<p>No reading found for day ' + day + '.</p>' +
+            '<p style="font-size:0.8em;color:#888">Plan loaded ' + planLookup.size +
+            ' entries. Sample keys: [' + keys.join(', ') + ']</p>';
         return;
     }
 
