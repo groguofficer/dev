@@ -13,10 +13,10 @@
 
     <header class="site-header">
         <div class="header-inner">
-            <div class="header-ornament">✦</div>
+            <span class="header-ornament">✦</span>
             <h1>Daily Bread</h1>
-            <p class="header-sub">Scripture & Devotional for the Faithful Soul</p>
-            <div class="header-ornament">✦</div>
+            <p class="header-sub">Scripture &amp; Devotional for the Faithful Soul</p>
+            <span class="header-ornament">✦</span>
         </div>
     </header>
 
@@ -29,17 +29,18 @@
             <section class="card verse-card">
                 <div class="card-label">Verse of the Hour</div>
                 <div id="random-verse-container">
-                    <p class="loading">Loading verse…</p>
+                    <p>Loading verse…</p>
                 </div>
-                <button class="refresh-btn" onclick="displayRandomVerse()" title="New verse">↻</button>
+                <!-- onclick uses window.refreshVerse, set in script1.js before defer runs -->
+                <button class="refresh-btn" onclick="window.refreshVerse && window.refreshVerse()" title="New verse">↻</button>
             </section>
 
             <!-- Section 2: Spurgeon Morning & Evening -->
             <section class="card spurgeon-card">
-                <div class="card-label">Spurgeon · Morning & Evening</div>
+                <div class="card-label">Spurgeon · Morning &amp; Evening</div>
                 <div id="spurgeon-date-label" class="spurgeon-date"></div>
                 <div id="spurgeon-container">
-                    <p class="loading">Loading devotional…</p>
+                    <p>Loading devotional…</p>
                 </div>
             </section>
 
@@ -50,7 +51,7 @@
             <section class="card reading-card">
                 <div class="card-label" id="daily-reading-title">Today's Reading</div>
                 <div id="daily-reading-text">
-                    <p class="loading">Loading reading plan…</p>
+                    <p>Loading reading plan…</p>
                 </div>
             </section>
         </div>
