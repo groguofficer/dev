@@ -7,62 +7,56 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style1.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <header class="site-header">
         <div class="header-inner">
-            <span class="header-ornament">✦</span>
+            <span class="ornament">&#10022;</span>
             <h1>Daily Bread</h1>
             <p class="header-sub">Scripture &amp; Devotional for the Faithful Soul</p>
-            <span class="header-ornament">✦</span>
+            <span class="ornament">&#10022;</span>
         </div>
     </header>
 
     <div class="container">
 
         <!-- Left Column -->
-        <div class="column left-column">
+        <div class="left-col">
 
-            <!-- Section 1: Random Verse -->
+            <!-- Verse of the Hour -->
             <section class="card verse-card">
                 <div class="card-label">Verse of the Hour</div>
-                <div id="random-verse-container">
-                    <p>Loading verse…</p>
-                </div>
-                <button class="refresh-btn" id="refresh-btn" title="New verse">↻</button>
+                <div id="random-verse-container"><p>Loading…</p></div>
+                <button class="refresh-btn" id="refresh-btn" title="New verse">&#8635;</button>
             </section>
 
-            <!-- Section 2: Spurgeon Morning & Evening -->
+            <!-- Spurgeon Morning & Evening -->
             <section class="card spurgeon-card">
-                <div class="card-label">Spurgeon · Morning &amp; Evening</div>
-                <div id="spurgeon-date-label" class="spurgeon-date"></div>
-                <div id="spurgeon-container">
-                    <p>Loading devotional…</p>
-                </div>
+                <div class="card-label">Spurgeon &middot; Morning &amp; Evening</div>
+                <div id="spurgeon-date-label" class="s-date"></div>
+                <div id="spurgeon-container"><p>Loading…</p></div>
             </section>
 
         </div>
 
-        <!-- Right Column: Daily Reading -->
-        <div class="column right-column">
+        <!-- Right Column -->
+        <div class="right-col">
             <section class="card reading-card">
                 <div class="card-label" id="daily-reading-title">Today's Reading</div>
-                <div id="daily-reading-text">
-                    <p>Loading reading plan…</p>
-                </div>
+                <div id="daily-reading-text"><p>Loading…</p></div>
             </section>
         </div>
 
     </div>
 
     <footer class="site-footer">
-        <p>"Thy word is a lamp unto my feet, and a light unto my path." — Psalm 119:105</p>
+        <p>&#8220;Thy word is a lamp unto my feet, and a light unto my path.&#8221; &mdash; Psalm 119:105</p>
     </footer>
 
-    <!-- Script at bottom of body — no defer needed; DOM is already parsed -->
-    <script src="script1.js"></script>
+    <!-- Script at bottom: DOM is ready, no defer needed -->
+    <script src="script.js"></script>
 
 </body>
 </html>
